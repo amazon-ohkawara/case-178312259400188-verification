@@ -10,6 +10,7 @@ jobs:
   ci:
     runs-on:
       - codebuild-case-178312259400188-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - buildspec-override:true
     steps:
       - name: Timestamp - start
         run: date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"

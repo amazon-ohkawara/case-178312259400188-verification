@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "=== INSTALL phase ==="
+      - date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
+  pre_build:
+    commands:
+      - echo "=== PRE_BUILD phase ==="
+      - date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
+  build:
+    commands:
+      - echo "=== BUILD phase (ignored - runner takes over) ==="
+  post_build:
+    commands:
+      - echo "=== POST_BUILD phase ==="
+      - date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
+      - echo "Checking workflow job result..."
+      - echo "Simulating detection of GitHub Actions failure"
+      - exit 1
