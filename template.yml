@@ -9,9 +9,19 @@ Parameters:
     Default: "https://github.com/amazon-ohkawara/case-178312259400188-verification"
   ConnectionArn:
     Type: String
-    Default: "arn:aws:codeconnections:ap-northeast-1:533266976340:connection/0d5f7a87-44cb-45ef-80a9-951c4f51b359"
+    Default: "arn:aws:codeconnections:ap-northeast-1:533266976340:connection/adcd8d40-4db4-44db-abf5-5bdd23a208eb"
 
 Resources:
+  # ============================================================
+  # CodeBuild Source Credential (GitHub via CodeConnections)
+  # ============================================================
+  GitHubSourceCredential:
+    Type: AWS::CodeBuild::SourceCredential
+    Properties:
+      AuthType: CODECONNECTIONS
+      ServerType: GITHUB
+      Token: !Ref ConnectionArn
+
   # ============================================================
   # CodeBuild Runner Project (CI - self-hosted GitHub Actions runner)
   # ============================================================
@@ -43,12 +53,16 @@ Resources:
                 Resource: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:case-178312259400188-pipeline"
               - Effect: Allow
                 Action:
-                  - codeconnections:UseConnection
+                  - codeconnections:GetConnectionToken
                   - codeconnections:GetConnection
+                  - codeconnections:UseConnection
                 Resource: !Ref ConnectionArn
 
   CodeBuildRunnerProject:
     Type: AWS::CodeBuild::Project
+    DependsOn:
+      - CodeBuildRunnerRole
+      - GitHubSourceCredential
     Properties:
       Name: case-178312259400188-runner
       ServiceRole: !GetAtt CodeBuildRunnerRole.Arn
@@ -63,9 +77,6 @@ Resources:
         Location: !Ref GitHubRepository
       Triggers:
         Webhook: true
-        ScopeConfiguration:
-          Name: amazon-ohkawara
-          Scope: GITHUB_GLOBAL_WEBHOOK
         FilterGroups:
           - - Type: EVENT
               Pattern: WORKFLOW_JOB_QUEUED
@@ -129,11 +140,6 @@ Resources:
         Type: S3
         Location: !Ref ArtifactBucket
       # Disable automatic triggers - only API invocation
-      # Specifying Triggers disables default change detection
-      Triggers:
-        - ProviderType: CodeStarSourceConnection
-          GitConfiguration:
-            SourceActionName: Source
       Stages:
         - Name: Source
           Actions:
