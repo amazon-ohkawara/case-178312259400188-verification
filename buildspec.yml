@@ -1,21 +1,57 @@
 version: 0.2
 
+env:
+  secrets-manager:
+    GITHUB_PAT: "github-pat-for-verification"
+
 phases:
   install:
     commands:
       - echo "=== INSTALL phase ==="
       - date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
+      # gh CLI is pre-installed in AL2 standard images
+      - gh --version || (curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && apt-get install gh -y)
   pre_build:
     commands:
       - echo "=== PRE_BUILD phase ==="
       - date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
+      # Authenticate gh CLI with PAT from Secrets Manager
+      - echo "$GITHUB_PAT" | gh auth login --with-token
+      - gh auth status
   build:
     commands:
-      - echo "=== BUILD phase (ignored - runner takes over) ==="
+      - echo "=== BUILD phase (runner takes over) ==="
   post_build:
     commands:
       - echo "=== POST_BUILD phase ==="
       - date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
-      - echo "Checking workflow job result..."
-      - echo "Simulating detection of GitHub Actions failure"
-      - exit 1
+      # Method 1: Read job status from file written by GitHub Actions step
+      - |
+        if [ -f /tmp/gha-metadata/job_status ]; then
+          JOB_STATUS=$(cat /tmp/gha-metadata/job_status)
+          echo "Job status from file: $JOB_STATUS"
+        else
+          echo "No metadata file found, falling back to gh CLI"
+          JOB_STATUS="unknown"
+        fi
+      # Method 2: If file method fails, use gh CLI to check run conclusion
+      - |
+        if [ "$JOB_STATUS" = "unknown" ] && [ -f /tmp/gha-metadata/run_id ]; then
+          RUN_ID=$(cat /tmp/gha-metadata/run_id)
+          REPO=$(cat /tmp/gha-metadata/repository)
+          echo "Checking run $RUN_ID in $REPO via gh CLI..."
+          CONCLUSION=$(gh run view "$RUN_ID" --repo "$REPO" --json conclusion --jq '.conclusion' 2>/dev/null || echo "unknown")
+          echo "Run conclusion from API: $CONCLUSION"
+          if [ "$CONCLUSION" = "failure" ]; then
+            JOB_STATUS="failure"
+          fi
+        fi
+      # Fail the build if the job failed
+      - |
+        echo "Final job status determination: $JOB_STATUS"
+        if [ "$JOB_STATUS" = "failure" ]; then
+          echo "ERROR: GitHub Actions job failed. Marking CodeBuild as FAILED."
+          exit 1
+        else
+          echo "GitHub Actions job succeeded or status unknown (no failure detected)."
+        fi

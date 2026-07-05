@@ -17,24 +17,28 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Timestamp - after checkout
-        run: date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
-
       - name: Run CI checks
         run: |
           date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
           echo "=== CI Start ==="
           echo "Branch: ${{ github.ref }}"
-          echo "Event: ${{ github.event_name }}"
           echo "SHA: ${{ github.sha }}"
           echo "=== CI checks passed ==="
-
-      - name: Timestamp - before failure
-        run: date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
 
       - name: Simulated failure (exit 1)
         run: |
           date -u "+%Y-%m-%dT%H:%M:%S.%3NZ"
           echo "=== Simulating step failure ==="
-          echo "This step will exit with code 1"
           exit 1
+
+      - name: Write run metadata (always runs)
+        if: always()
+        run: |
+          mkdir -p /tmp/gha-metadata
+          echo "${{ github.run_id }}" > /tmp/gha-metadata/run_id
+          echo "${{ github.repository }}" > /tmp/gha-metadata/repository
+          echo "${{ job.status }}" > /tmp/gha-metadata/job_status
+          echo "=== Metadata written ==="
+          echo "run_id: ${{ github.run_id }}"
+          echo "repository: ${{ github.repository }}"
+          echo "job.status: ${{ job.status }}"
