@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  ci:
+    runs-on:
+      - codebuild-case-178312259400188-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run CI checks
+        run: |
+          echo "=== CI Start ==="
+          echo "Branch: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "=== CI checks passed ==="
+
+      - name: Start CodePipeline (deploy)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "=== Triggering CodePipeline for deployment ==="
+          aws codepipeline start-pipeline-execution \
+            --name case-178312259400188-pipeline \
+            --region ap-northeast-1
+          echo "=== CodePipeline triggered ==="

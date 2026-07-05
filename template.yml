@@ -1,0 +1,210 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Verification for case 178312259400188:
+  CodeBuild self-hosted runner (CI) + CodePipeline approval flow (CD)
+
+Parameters:
+  GitHubRepository:
+    Type: String
+    Default: "https://github.com/amazon-ohkawara/case-178312259400188-verification"
+  ConnectionArn:
+    Type: String
+    Default: "arn:aws:codeconnections:ap-northeast-1:533266976340:connection/0d5f7a87-44cb-45ef-80a9-951c4f51b359"
+
+Resources:
+  # ============================================================
+  # CodeBuild Runner Project (CI - self-hosted GitHub Actions runner)
+  # ============================================================
+  CodeBuildRunnerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: case-178312259400188-runner-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildRunnerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - codepipeline:StartPipelineExecution
+                Resource: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:case-178312259400188-pipeline"
+              - Effect: Allow
+                Action:
+                  - codeconnections:UseConnection
+                  - codeconnections:GetConnection
+                Resource: !Ref ConnectionArn
+
+  CodeBuildRunnerProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: case-178312259400188-runner
+      ServiceRole: !GetAtt CodeBuildRunnerRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+      Source:
+        Type: GITHUB
+        Location: !Ref GitHubRepository
+      Triggers:
+        Webhook: true
+        ScopeConfiguration:
+          Name: amazon-ohkawara
+          Scope: GITHUB_GLOBAL_WEBHOOK
+        FilterGroups:
+          - - Type: EVENT
+              Pattern: WORKFLOW_JOB_QUEUED
+
+  # ============================================================
+  # CodePipeline (CD - approval + deploy)
+  # ============================================================
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: case-178312259400188-pipeline-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codeconnections:UseConnection
+                  - codeconnections:GetConnection
+                Resource: !Ref ConnectionArn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:GetBucketVersioning
+                Resource:
+                  - !Sub "${ArtifactBucket.Arn}"
+                  - !Sub "${ArtifactBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: "*"
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "case-178312259400188-artifacts-${AWS::AccountId}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAfter7Days
+            Status: Enabled
+            ExpirationInDays: 7
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: case-178312259400188-pipeline
+      PipelineType: V2
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      # Disable automatic triggers - only API invocation
+      # Specifying Triggers disables default change detection
+      Triggers:
+        - ProviderType: CodeStarSourceConnection
+          GitConfiguration:
+            SourceActionName: Source
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: "1"
+              Configuration:
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: amazon-ohkawara/case-178312259400188-verification
+                BranchName: main
+                DetectChanges: "false"
+              OutputArtifacts:
+                - Name: SourceOutput
+
+        - Name: Approval
+          Actions:
+            - Name: ManualApproval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: "1"
+              Configuration:
+                CustomData: "Approve deployment for case-178312259400188 verification"
+
+        - Name: Deploy
+          Actions:
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref DeployProject
+              InputArtifacts:
+                - Name: SourceOutput
+
+  # ============================================================
+  # CodeBuild Deploy Project (placeholder - just echoes)
+  # ============================================================
+  DeployProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: case-178312259400188-deploy
+      ServiceRole: !GetAtt CodeBuildRunnerRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - echo "=== Deploy Stage ==="
+                - echo "Deploying commit $(cat /tmp/commit_id 2>/dev/null || echo 'unknown')..."
+                - echo "Deployment complete!"
+                - date
+
+Outputs:
+  RunnerProjectName:
+    Value: !Ref CodeBuildRunnerProject
+  PipelineName:
+    Value: !Ref Pipeline
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
