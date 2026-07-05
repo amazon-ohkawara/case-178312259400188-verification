@@ -53,6 +53,13 @@ Resources:
                 Resource: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:case-178312259400188-pipeline"
               - Effect: Allow
                 Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::case-178312259400188-artifacts-${AWS::AccountId}/*"
+              - Effect: Allow
+                Action:
                   - codeconnections:GetConnectionToken
                   - codeconnections:GetConnection
                   - codeconnections:UseConnection

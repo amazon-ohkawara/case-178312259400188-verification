@@ -26,3 +26,4 @@ aws cloudformation deploy \
 ```bash
 aws cloudformation delete-stack --stack-name case-178312259400188 --region ap-northeast-1
 ```
+# test
